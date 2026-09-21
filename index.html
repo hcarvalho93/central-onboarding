@@ -298,6 +298,19 @@ table.t .num{text-align:right;font-variant-numeric:tabular-nums}
 .login-card .troca button{background:none;border:0;color:var(--azul);cursor:pointer;font-size:12.5px;padding:0}
 .login-card .esqueci{text-align:center;margin-top:10px}
 .login-card .esqueci button{background:none;border:0;color:var(--tinta-3);cursor:pointer;font-size:11.5px;text-decoration:underline;padding:0}
+
+/* Menu de usuario (rodape da barra lateral) */
+.user-menu{position:relative}
+.user-menu__btn{display:flex;align-items:center;gap:7px;width:100%;background:none;border:0;color:#B9C8E2;padding:6px 2px;cursor:pointer;font-size:11.5px;text-align:left}
+.user-menu__btn:hover{color:#fff}
+.user-menu__email{flex:1;word-break:break-all;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-menu__caret{font-size:9px;opacity:.7;flex:none}
+.user-menu__pop{position:absolute;bottom:calc(100% + 6px);left:0;width:100%;min-width:196px;background:#fff;border-radius:var(--r);box-shadow:var(--sombra);border:1px solid var(--linha);padding:6px;display:none;z-index:60}
+.user-menu__pop.on{display:block}
+.user-menu__pop button{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 9px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--tinta)}
+.user-menu__pop button:hover{background:var(--papel)}
+.user-menu__pop button.sair{color:var(--vermelho)}
+.user-menu__pop hr{border:0;border-top:1px solid var(--linha-2);margin:5px 2px}
 .nota{font-size:12px;color:var(--tinta-3);margin-top:8px}
 .duas{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;align-items:start}
 .barra{height:6px;background:var(--linha-2);border-radius:4px;overflow:hidden;margin-top:5px}
@@ -524,7 +537,55 @@ async function fazerLogout(){
 
 function atualizarRailInfo(email){
   const el = document.getElementById('railInfo');
-  if(el) el.innerHTML = '<div style="margin-bottom:6px;word-break:break-all">'+email+'</div><button onclick="fazerLogout()">Sair</button>';
+  if(el) el.innerHTML = `
+    <div class="user-menu" id="userMenu">
+      <button class="user-menu__btn" onclick="toggleUserMenu()" title="${email}">
+        <span class="user-menu__email">${email}</span>
+        <span class="user-menu__caret">▾</span>
+      </button>
+      <div class="user-menu__pop" id="userMenuPop">
+        <button onclick="fecharUserMenu();abrirEditarSenha()">Editar senha</button>
+        <hr>
+        <button class="sair" onclick="fecharUserMenu();fazerLogout()">Sair</button>
+      </div>
+    </div>`;
+}
+
+function toggleUserMenu(){ document.getElementById('userMenuPop').classList.toggle('on'); }
+function fecharUserMenu(){ const p=document.getElementById('userMenuPop'); if(p) p.classList.remove('on'); }
+document.addEventListener('click', e=>{
+  const um = document.getElementById('userMenu');
+  if(um && !um.contains(e.target)) fecharUserMenu();
+});
+
+function abrirEditarSenha(){
+  abrirModal('Editar senha', `
+    <div class="campo" style="margin-bottom:11px"><label>Senha atual</label><input type="password" id="senhaAtual" autocomplete="current-password"></div>
+    <div class="campo" style="margin-bottom:11px"><label>Nova senha</label><input type="password" id="senhaNova" autocomplete="new-password"></div>
+    <div class="campo" style="margin-bottom:4px"><label>Confirmar nova senha</label><input type="password" id="senhaNova2" autocomplete="new-password"></div>
+    <div id="senhaErro" style="color:var(--vermelho);font-size:12px;min-height:16px;margin-top:6px"></div>
+  `, `<button class="btn" onclick="fecharModal()">Cancelar</button><button class="btn btn--p" onclick="salvarNovaSenha()">Salvar nova senha</button>`);
+}
+
+async function salvarNovaSenha(){
+  const atual = document.getElementById('senhaAtual').value;
+  const nova = document.getElementById('senhaNova').value;
+  const nova2 = document.getElementById('senhaNova2').value;
+  const erroEl = document.getElementById('senhaErro');
+  erroEl.textContent = '';
+  if(!atual || !nova || !nova2){ erroEl.textContent = 'Preencha todos os campos.'; return; }
+  if(nova.length<6){ erroEl.textContent = 'A nova senha precisa ter pelo menos 6 caracteres.'; return; }
+  if(nova !== nova2){ erroEl.textContent = 'As senhas não coincidem.'; return; }
+  const { data:{ session } } = await supa.auth.getSession();
+  if(!session){ erroEl.textContent = 'Sessão expirada. Feche este aviso, saia e entre novamente.'; return; }
+  erroEl.textContent = 'Verificando senha atual...';
+  const { error: erroLogin } = await supa.auth.signInWithPassword({ email: session.user.email, password: atual });
+  if(erroLogin){ erroEl.textContent = 'Senha atual incorreta.'; return; }
+  erroEl.textContent = 'Salvando...';
+  const { error: erroUpdate } = await supa.auth.updateUser({ password: nova });
+  if(erroUpdate){ erroEl.textContent = erroUpdate.message; return; }
+  fecharModal();
+  toast('Senha alterada com sucesso.');
 }
 
 supa.auth.onAuthStateChange((evento, sessao)=>{
