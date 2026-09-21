@@ -468,6 +468,21 @@ table.t .num{text-align:right;font-variant-numeric:tabular-nums}
   </div>
 </div>
 
+<div class="login-gate" id="recoveryGate" style="display:none">
+  <div class="login-card">
+    <h2>Definir nova senha</h2>
+    <p class="sub">Você abriu um link de recuperação de senha. Escolha uma nova senha para continuar.</p>
+    <label for="recNova">Nova senha</label>
+    <input type="password" id="recNova" autocomplete="new-password">
+    <label for="recNova2">Confirmar nova senha</label>
+    <input type="password" id="recNova2" autocomplete="new-password">
+    <div class="erro" id="recErro"></div>
+    <div class="acoes">
+      <button class="btn btn--p" onclick="salvarSenhaRecuperada()">Salvar nova senha e entrar</button>
+    </div>
+  </div>
+</div>
+
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
@@ -526,9 +541,32 @@ async function fazerCadastro(){
 async function esqueciSenha(){
   const email = document.getElementById('loginEmail').value.trim();
   if(!email){ mostrarErroLogin('Digite seu e-mail acima e clique em "Esqueci minha senha" novamente.'); return; }
-  const { error } = await supa.auth.resetPasswordForEmail(email);
+  mostrarErroLogin('Enviando link de redefinição...');
+  const { error } = await supa.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + window.location.pathname
+  });
   if(error){ mostrarErroLogin(error.message); return; }
-  mostrarErroLogin('Link de redefinição enviado para ' + email + '.');
+  mostrarErroLogin('Link de redefinição enviado para ' + email + '. Verifique também a caixa de spam.');
+}
+
+function mostrarRecoveryGate(){ document.getElementById('recoveryGate').style.display = 'flex'; }
+function esconderRecoveryGate(){ document.getElementById('recoveryGate').style.display = 'none'; }
+
+async function salvarSenhaRecuperada(){
+  const nova = document.getElementById('recNova').value;
+  const nova2 = document.getElementById('recNova2').value;
+  const erroEl = document.getElementById('recErro');
+  erroEl.textContent = '';
+  if(!nova || !nova2){ erroEl.textContent = 'Preencha os dois campos.'; return; }
+  if(nova.length<6){ erroEl.textContent = 'A nova senha precisa ter pelo menos 6 caracteres.'; return; }
+  if(nova !== nova2){ erroEl.textContent = 'As senhas não coincidem.'; return; }
+  erroEl.textContent = 'Salvando...';
+  const { error } = await supa.auth.updateUser({ password: nova });
+  if(error){ erroEl.textContent = error.message; return; }
+  esconderRecoveryGate();
+  toast('Senha redefinida com sucesso.');
+  const { data:{ session } } = await supa.auth.getSession();
+  if(session){ await bootRemoto(); atualizarRailInfo(session.user.email); }
 }
 
 async function fazerLogout(){
@@ -589,15 +627,21 @@ async function salvarNovaSenha(){
 }
 
 supa.auth.onAuthStateChange((evento, sessao)=>{
-  if(evento==='SIGNED_IN'){
+  if(evento==='PASSWORD_RECOVERY'){
     esconderLoginGate();
+    mostrarRecoveryGate();
+  }else if(evento==='SIGNED_IN'){
+    esconderLoginGate();
+    esconderRecoveryGate();
     bootRemoto().then(()=>atualizarRailInfo(sessao.user.email));
   }else if(evento==='SIGNED_OUT'){
+    esconderRecoveryGate();
     mostrarLoginGate();
   }
 });
 
 async function iniciarApp(){
+  if(location.hash.includes('type=recovery')) return; // aguarda o evento PASSWORD_RECOVERY acima
   const { data:{ session } } = await supa.auth.getSession();
   if(!session){ mostrarLoginGate(); return; }
   esconderLoginGate();
